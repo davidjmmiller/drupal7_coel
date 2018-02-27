@@ -1,0 +1,23 @@
+/**
+ * @file
+ * CSS file for import data.
+ */
+
+.aggregate-data-filter-form .container-inline-date,
+.aggregate-data-filter-form .form-item-created-date {
+  float: left;
+  clear: right;
+}
+
+.aggregate-data-filter-form .created-date-prefix {
+  margin-top: 27px;
+  margin-right: 10px;
+  float: left;
+  clear: right;
+}
+
+.aggregate-data-filter-form .form-submit {
+  float: left;
+  clear: both;
+  margin-top: 20px;
+}

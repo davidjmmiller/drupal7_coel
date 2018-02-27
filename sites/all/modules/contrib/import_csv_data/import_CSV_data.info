@@ -1,0 +1,25 @@
+name = Import CSV Data
+description = Provides a way to Import the CSV Data into the Portal.
+package = Other
+core = 7.x
+
+; Module dependencies for Module.
+dependencies[] = ultimate_cron
+dependencies[] = date
+dependencies[] = date_popup
+
+; Configuration of module.
+configure = admin/importdata
+
+; Add a style sheet.
+stylesheets[all][] = css/import_CSV_data.css
+
+; Add a js file.
+
+
+; Information added by Drupal.org packaging script on 2017-04-23
+version = "7.x-1.0"
+core = "7.x"
+project = "import_csv_data"
+datestamp = "1492952045"
+

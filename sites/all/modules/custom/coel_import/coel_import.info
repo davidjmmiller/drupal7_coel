@@ -1,0 +1,4 @@
+name = Importacion de comprobantes
+description = Lee los archivos en formato XLSX y los ingresa en la base de datos
+package = COEL
+core = 7.x

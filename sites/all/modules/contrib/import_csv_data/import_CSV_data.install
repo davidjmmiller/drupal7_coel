@@ -1,0 +1,32 @@
+<?php
+
+/**
+ * @file
+ * Install file for Import Data entries management.
+ */
+
+/**
+ * Implements hook_disable().
+ */
+function import_CSV_data_disable() {
+  $variable_list = array(
+    'import_data_fieldset',
+  );
+  foreach ($variable_list as $variable_name) {
+    variable_del($variable_name);
+  }
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function import_CSV_data_uninstall() {
+  // Rename table created in module with todays date for backup.
+  try {
+    $query = "RENAME TABLE `imported_data` TO `imported_data_bkp_" . date("Y-m-d H:i:j") . "`";
+    db_query($query);
+  } catch (Exception $e) {
+    // Ignore possible errors when the user doesn't have the necessary
+    // privileges to RENAME the database.
+  }
+}

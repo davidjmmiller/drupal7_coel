@@ -1,0 +1,433 @@
+<?php
+
+/**
+ * @file
+ * Module file to Give Facility to Import CSV Data into System.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function import_CSV_data_menu() {
+  $items = array();
+
+  $items['admin/importdata'] = array(
+    'title' => 'Import Data',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array(
+      'import_CSV_data_form',
+    ),
+    'access arguments' => array('administer site configuration'),
+	  'type' => MENU_NORMAL_ITEM,
+    'description' => 'Imports Data into the System',
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_form().
+*/
+function import_CSV_data_form($form, &$form_state) {
+  $form['error-message'] = array(
+    '#prefix' => '<div id="maintenance-error-message">',
+    '#suffix' => '</div>',
+  );
+  $str_desc = t('Please give comma separated field names to be used in table.') . '<br/>' . t('Please use same names for column in uploaded file as well.');
+  $form['table_fields'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Set Table Fields :',
+    '#description' => $str_desc,
+    '#default_value' => variable_get('import_data_fieldset'),
+    '#required' => TRUE,
+  );
+  $btn_value = t('Submit');
+
+  if (!empty(variable_get('import_data_fieldset'))) {
+    $form['file'] = array(
+      '#type' => 'file',
+      '#name' => 'files[]',
+      '#title' => t('Upload CSV File(s)'),
+      '#description' => t('Upload a file, allowed extensions: csv'),
+      '#attributes' => array('multiple' => 'multiple'),
+    );
+    $btn_value = t('Schedule For Import');
+  }
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => $btn_value,
+    '#submit' => array(
+      'import_CSV_data_form_submit',
+    ),
+  );
+  return $form;
+}
+
+/**
+ * Implements hook_form_validate().
+*/
+function import_CSV_data_form_validate($form, &$form_state) {
+  if (isset($_FILES['files']['name'])) {
+    $num_files = count($_FILES['files']['name']);
+    for ($i = 0; $i < $num_files; $i++) {
+      $file = file_save_upload($i, array(
+        // Validate extensions.
+        'file_validate_extensions' => array('csv'),
+      ));
+      // If the file passed validation:
+      if ($file) {
+        // Move the file into the Drupal file system
+        $hash = 'public://imports';
+        if (file_prepare_directory($hash, FILE_CREATE_DIRECTORY)) {
+          file_prepare_directory($hash, FILE_MODIFY_PERMISSIONS);
+          if ($file = file_move($file, $hash, FILE_EXISTS_RENAME)) {
+            // Save the file for use in the submit handler.
+            $form_state['values']['file'][$i] = $file;
+            $form_state['storage']['file'][$i] = $file;
+            $file->status = FILE_STATUS_PERMANENT;
+            $file = file_save($file);
+          } else {
+            form_set_error('file', t('Failed to write the uploaded file the site\'s file folder.'));
+          }
+        } else {
+          form_set_error('file', t('Failed to create \'imports\' folder to upload file.'));
+        }
+      } else {
+        form_set_error('file', t('No file was uploaded.'));
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_form_submit().
+*/
+function import_CSV_data_form_submit($form, &$form_state) {
+  $query = '';
+  $vars = array();
+  if (variable_get('import_data_fieldset') != $form_state['values']['table_fields']) {
+    if (empty(variable_get('import_data_fieldset'))) {
+      # CREATE TABLE
+      $arr_fields = explode(',', $form_state['values']['table_fields']);
+
+      $query = "CREATE TABLE {imported_data} ( `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primary Key: Auto Increment Unique ID.', ";
+      foreach ($arr_fields as $key => $field) {
+        if (isset($field) && !empty($field)) {
+          $query.= "`$field` VARCHAR(255), ";
+        }
+      }
+      $query.= "`created` int(11) NOT NULL DEFAULT '0' COMMENT 'Timestamp for record was created.', PRIMARY KEY(`id`)) ENGINE=INNODB DEFAULT CHARSET=utf8 COMMENT='Stores Imported Data.'";
+      db_query($query);
+      watchdog('Import Data', 'TABLE `imported_data` created.', $vars, WATCHDOG_INFO, NULL);
+    } else {
+      # ALTER TABLE
+      $arr_old_fields = explode(',', variable_get('import_data_fieldset'));
+      $arr_new_fields = explode(',', $form_state['values']['table_fields']);
+      $arr_fields_add = array_diff($arr_new_fields, $arr_old_fields);
+      $arr_fields_del = array_diff($arr_old_fields, $arr_new_fields);
+
+      // Add New Fields.
+      foreach ($arr_fields_add as $key => $field) {
+        if (!empty($field)) {
+          $query.= "ALTER TABLE `imported_data` ADD `$field` VARCHAR(255);";
+          db_query($query);
+          watchdog('Import Data', "TABLE `imported_data` altered, Added Field `$field`.", $vars, WATCHDOG_INFO, NULL);
+        }
+      }
+      // Drop Old Fields.
+      foreach ($arr_fields_del as $key => $field) {
+        if (!empty($field)) {
+          $query = "ALTER TABLE `imported_data` DROP `$field`;";
+          db_query($query);
+          watchdog('Import Data', "TABLE `imported_data` altered, Dropped Field `$field`.", $vars, WATCHDOG_INFO, NULL);
+        }
+      }
+    }
+    variable_set('import_data_fieldset', $form_state['values']['table_fields']);
+    watchdog('Import Data', "Variable `import_data_fieldset` created.", $vars, WATCHDOG_INFO, NULL);
+    drupal_set_message(t('Table named `imported_data` for Import Values is created / altered.'));
+  }
+
+  if (isset($form_state['values']['file'])) {
+    $str_files = '';
+    foreach ($form_state['storage']['file'] as $key => $value) {
+      $str_files.= $value->filename . ', ';
+    }
+    //Strip off last comma from files names.
+    $str_files = substr($str_files, 0, strlen($str_files)-2);
+    drupal_set_message(t('File(s) Scheduled for CRON to import data : %f.', array('%f' => $str_files)));
+    watchdog('Import Data', 'File(s) Scheduled for CRON to import data.', $vars, WATCHDOG_INFO, NULL);
+  }
+}
+
+/**
+ * Implements hook_cronapi().
+*/
+function import_CSV_data_cronapi($op, $job = NULL) {
+  return array(
+    'import_data_cronjob' => array(
+      'title' => 'Import Data Handler',
+      'callback' => 'import_CSV_data_import_callback',
+      'enabled' => TRUE,
+      'scheduler' => array(
+        'name' => 'crontab',
+        'crontab' => array(
+          'rules' => array('0+@ */12 * * *'),
+        ),
+      ),
+    ),
+  );
+}
+
+/* Cron Job */
+function import_CSV_data_import_callback($job) {
+  $vars = array();
+  $hash = 'public://imports';
+  $files = file_scan_directory($hash, '/.*\.csv$/', array('recurse' => FALSE));
+  $hash .= '/completed';
+  if (file_prepare_directory($hash, FILE_CREATE_DIRECTORY)) {
+    file_prepare_directory($hash, FILE_MODIFY_PERMISSIONS);
+    watchdog('Cron Import Data', t('Folder \'completed\' Prepared to move file.'), $vars, WATCHDOG_INFO,NULL);
+  } else {
+    form_set_error('file', t('Failed to create \'completed\' folder to move file.'));
+    watchdog('Cron Import Data', t('Failed to create \'completed\' folder to move file.'), $vars, WATCHDOG_ERROR,NULL);
+  }
+  foreach ($files as $file_name => $file_details) {
+    if (file_exists($file_name)) {
+      $cols = rtrim(variable_get('import_data_fieldset'),',');
+      if (isset($cols)) {
+        $query = "LOAD DATA INFILE '" . $_SERVER['DOCUMENT_ROOT'] . "/drupal-7.54/sites/default/files/imports/" . $file_details->filename . "' INTO TABLE imported_data  FIELDS TERMINATED BY ',' IGNORE 1 LINES ($cols) SET created = " . mktime(00, 00, 01, date("m"), date("d"), date("Y")) . " ;";
+      }
+      db_query($query);
+      watchdog('Cron Import Data', t('Data Imported into database from file : ') . $file_details->filename, $vars, WATCHDOG_INFO,NULL);
+      $delete_file_result = db_select('file_managed', 'file_managed')
+                      ->fields('file_managed', array('fid'))
+                      ->condition('uri', $file_details->uri, '=')
+                      ->execute()
+                      ->fetchAssoc();
+      $file_delete = file_load($delete_file_result['fid']);
+      if (isset($file_delete)) {
+        watchdog('Cron Import Data', t('File loaded to delete : ') . $file_delete->uri, $vars, WATCHDOG_INFO,NULL);
+      } else {
+        watchdog('Cron Import Data', t('Error in File load to delete : ') . $file_delete->uri, $vars, WATCHDOG_ERROR,NULL);
+      }
+      // Move executed file to new folder.
+      if ($file_moved = file_copy($file_details, $hash, FILE_EXISTS_RENAME)) {
+        $file_moved->filemime = 'text/csv';
+        $file_moved->status = FILE_STATUS_PERMANENT;
+        $file_moved = file_save($file_moved);
+        watchdog('Import Data', 'Moved the uploaded file to \'completed\' folder : ' . $file_moved->uri, $vars, WATCHDOG_INFO, NULL);
+        if (file_delete($file_delete)) {
+          watchdog('Import Data', 'Deleted the uploaded file from \'imports\' folder : ' . $file_delete->uri, $vars, WATCHDOG_INFO, NULL);
+        } else {
+          watchdog('Import Data', 'Error in Deleting the uploaded file from \'imports\' folder : ' . $file_delete->uri, $vars, WATCHDOG_ERROR, NULL);
+        }
+      } else {
+        watchdog('Import Data', 'Failed to move the uploaded file to \'completed\' folder.', $vars, WATCHDOG_ERROR, NULL);
+      }
+    } else {
+      watchdog('Cron Import Data', 'File Not Found to import data.  Please upload one.', $vars, WATCHDOG_ERROR,NULL);
+    }
+  }
+}
+
+/**
+ * Implements hook_block_info().
+*/
+function import_CSV_data_block_info() {
+  $blocks['aggregate_report'] = array(
+    'info' => t('Aggregate Report Block'),
+    'cache' => DRUPAL_NO_CACHE,
+  );
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+*/
+function import_CSV_data_block_view($delta = '') {
+  $block = array();
+
+  switch ($delta) {
+    case 'aggregate_report':
+      $block['subject'] = t('Aggregate Report Block');
+      $block['title'] = t('Aggregate Report Block');
+      $block['region'] = 'content';
+      $block['visibility'] = 1;
+      $block['pages'] = 'aggregate-report';
+      $block['content'] = array(
+        '#markup' =>import_CSV_data_aggregate_report_content(),
+      );
+    break;
+  }
+  return $block;
+}
+
+/**
+ * Function to clean up field to display.
+*/
+function import_CSV_data_clean_up($field) {
+  $pattern = '/\W/';
+  $replacement = '';
+  $field = ucwords(preg_replace($pattern, $replacement, $field));
+  return $field;
+}
+
+/**
+ * For Block Content.
+*/
+function import_CSV_data_aggregate_report_content() {
+  $str_output = '';
+  $temp_form = drupal_get_form('import_CSV_data_aggregate_data_form');
+  $str_output.= drupal_render($temp_form);
+  $arr_cols = explode(',', variable_get('import_data_fieldset'));
+  $arr_cols = array_slice($arr_cols, 0, 4); // Limit to 4 items for display.
+
+  foreach ($arr_cols as $key => $field) {
+    // Decided not to clean up fields considering why to clean if can be used.
+    // $data = import_data_clean_up($field);
+    $data = ucwords($field);
+    $header[] = array('data' =>  $data, 'field' => $field, 'sort' => 'ASC');
+  }
+  $header[] = array('data' =>  'Created', 'field' => 'created', 'sort' => 'ASC'); // Add 5th item for display.
+
+  $start_time = isset($_GET['start-date'])?$_GET['start-date']:'';
+  $end_time = isset($_GET['end-date'])?$_GET['end-date']:'';
+
+  $aggregate_report_query = db_select('imported_data', 'imported_data')
+                              ->extend('PagerDefault')
+                              ->extend('TableSort');
+  $aggregate_report_query->fields('imported_data', $arr_cols);
+  $aggregate_report_query->addExpression("DATE_FORMAT(FROM_UNIXTIME(created), '%D %M.%Y %H:%i')"); // Get 5th item for display.
+
+  if (!empty($start_time) && !empty($end_time) && !empty($_GET['created'])) {
+    $or = db_or();
+    $or->condition('created', array($start_time, $end_time), 'BETWEEN');
+    $or->condition('created', $_GET['created'], '=');
+    $aggregate_report_query->condition($or);
+  } elseif (empty($start_time) && empty($end_time) && !empty($_GET['created'])) {
+    $aggregate_report_query->condition('created', $_GET['created'], '=');
+  } elseif (!empty($start_time) && !empty($end_time) && empty($_GET['created'])) {
+    $aggregate_report_query->condition('created', array($start_time, $end_time), 'BETWEEN');
+  }
+
+  $aggregate_report_query->orderByHeader($header)->limit(10); // LIMIT to 10 records for pager;
+
+  $aggregate_report_result = $aggregate_report_query->execute();
+
+  if ($aggregate_report_result->rowCount()!=0) {
+    while ($aggregate_report_record = $aggregate_report_result->fetchAssoc()) {
+      $rows[] = $aggregate_report_record;
+    }
+  } else {
+    $rows[] = array('data' => array(array('data' => t('No Records Found !'), 'colspan' => 7)),'class' => array('no-aggregate-records'));
+  }
+  $str_output.= theme('table', array('header' => $header,'rows' => $rows ));
+  $str_output.= theme('pager', array('element' => 1)); // add the pager.
+  return $str_output;
+}
+
+/**
+ * Form to Filter.
+ *
+ * Implements hook_form().
+*/
+function import_CSV_data_aggregate_data_form() {
+  $form['error-message'] = array(
+    '#prefix' => '<div id="maintenance-error-message">',
+    '#suffix' => '</div>',
+  );
+
+  $start_time = empty($_GET['start-date'])?mktime(0, 0, 0, date("m"), date("d"), date("Y")) - (604800):$_GET['start-date'];
+  $end_time = empty($_GET['end-date'])?mktime(23, 59, 59, date("m"), date("d"), date("Y")):$_GET['end-date'];
+
+  $form['start-date'] = array(
+    '#type' => 'date_popup',
+    '#title' => t('Start Date'),
+    '#date_label_position' => 'within',
+    '#default_value' => date('Y-m-d', $start_time),
+    '#date_type' => DATE_UNIX,
+    '#date_timezone' => date_default_timezone(),
+    '#date_format' => 'm-d-Y',
+    '#date_increment' => 1,
+    '#date_year_range' => '-3:+3',
+    '#attributes' => array('placeholder' => t('Start date'),'class' => array('aggregate-report-start-date')),
+  );
+
+  $form['end-date'] = array(
+    '#type' => 'date_popup',
+    '#title' => t('End Date'),
+    '#date_label_position' => 'within',
+    '#default_value' => date('Y-m-d',$end_time),
+    '#date_type' => DATE_UNIX,
+    '#date_timezone' => date_default_timezone(),
+    '#date_format' => 'm-d-Y',
+    '#date_increment' => 1,
+    '#date_year_range' => '-3:+3',
+    '#attributes' => array('placeholder' => t('End date')),
+  );
+
+  $created_date_query = db_select('imported_data', 'imported_data');
+  $created_date_query->distinct();
+  $created_date_query->fields('imported_data', array('created'));
+  $created_date_result = $created_date_query->execute();
+  $created_date_options = array();
+  if ($created_date_result->rowCount()!=0) {
+    $created_date_options[] = '--Any--';
+    while ($created_date_record = $created_date_result->fetchAssoc()) {
+      $created_date_options[$created_date_record['created']] = date('d-M-Y', $created_date_record['created']);
+    }
+  }
+  if (!empty($created_date_options)) {
+    $form['created-date'] = array(
+     '#type' => 'select',
+     '#title' => t('Imported On'),
+     '#options' => $created_date_options,
+     '#default_value' => isset($_GET['created'])?$_GET['created']:'0',
+     '#prefix' => '<div class="created-date-prefix">OR</div>',
+    );
+  }
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Filter'),
+    '#submit' => array(
+      'import_data_aggregate_data_form_submit',
+    ),
+  );
+  $form['#attributes']['class'][] = 'aggregate-data-filter-form';
+  $form['#validate'][] = 'import_data_aggregate_data_form_validate';
+  return $form;
+}
+
+/**
+ * Implements hook_validate().
+*/
+function import_CSV_data_aggregate_data_form_validate($form, &$form_state) {
+  if ((isset($form_state['values']['start-date']) && !isset($form_state['values']['end-date'])) || (!isset($form_state['values']['start-date']) && isset($form_state['values']['end-date']))) {
+    form_set_error('Import', t('Please provide both, start date and end date OR None.'));
+    return FALSE;
+  }
+  if (!isset($form_state['values']['start-date']) && !isset($form_state['values']['end-date']) && !isset($form_state['values']['created-date'])) {
+    form_set_error('Import', t('Please provide atleast, start date and end date OR Imported On date.'));
+    return FALSE;
+  }
+}
+
+/**
+ * Implements hook_form_submit().
+*/
+function import_CSV_data_aggregate_data_form_submit($form, &$form_state) {
+  $start_date = '';
+  $end_date = '';
+  if (isset($form_state['values']['start-date'])) {
+    $arr_start_date = explode('-', $form_state['values']['start-date']);
+    $start_date = mktime(0, 0, 0, $arr_start_date[1], $arr_start_date[2], $arr_start_date[0]);
+  }
+
+  if (isset($form_state['values']['end-date'])) {
+    $arr_end_date = explode('-', $form_state['values']['end-date']);
+    $end_date = mktime(23, 59, 59, $arr_end_date[1], $arr_end_date[2], $arr_end_date[0]);
+  }
+  drupal_goto(current_path(), array('query' => array('start-date'=>$start_date,'end-date'=>$end_date,'created'=>$form_state['values']['created-date'])));
+}
