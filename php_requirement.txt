@@ -1,0 +1,4 @@
+[extensions]
+php-zip => for XLSX parser
+php-curl => for mailgun
+libraries => for mailgun
