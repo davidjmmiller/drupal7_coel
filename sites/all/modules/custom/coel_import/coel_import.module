@@ -56,14 +56,15 @@ function coel_import_help($path, $arg) {
  */
 function coel_import_permission() {
   return array(
-    'access simple page' => array(
-      'title' => t('Access simple page'),
-      'description' => t('Allow users to access simple page'),
+    'import xlsx file' => array(
+       'title' => t('Imports a XSLX file for COEL'),
+       'description' => t('Imports and generate the vouchers from a XLSX file to PDF '),
     ),
-    'access arguments page' => array(
-      'title' => t('Access page with arguments'),
-      'description' => t('Allow users to access page with arguments'),
+    'send emails pdf' => array(
+        'title' => t('Send mails for all the records imported'),
+        'description' => t('It takes all the records imported by the XLSX file and send emails with the receipts attached in PDF'),
     ),
+
   );
 }
 
@@ -106,16 +107,18 @@ function coel_import_menu() {
   $items['coel/import'] = array(
     'title' => 'Importación de comprobantes',
     'page callback' => 'coel_import_files',
-    'access callback' => TRUE,
+    //'access callback' => TRUE,
     'expanded' => TRUE,
+    'access arguments' => array('import xlsx file'),
     //'file' => 'tcpdf.pages.inc'
   );
 
   $items['coel/send'] = array(
     'title' => 'Enviar comprobantes por correo',
     'page callback' => 'coel_import_send',
-    'access callback' => TRUE,
+    //'access callback' => TRUE,
     'expanded' => TRUE,
+    'access arguments' => array('send emails pdf'),
     //'file' => 'tcpdf.pages.inc'
     //'access arguments' => array('access coel send'),
   );
@@ -132,7 +135,7 @@ function coel_import_menu() {
   $items['coel/send/%'] = array(
     'page callback' => 'coel_import_send_mail',
     'page arguments' => array(2),
-    'access arguments' => array('access arguments page'),
+    'access arguments' => array('send emails pdf'),
     'type' => MENU_CALLBACK,
   );
 
@@ -626,18 +629,27 @@ function coel_import_send_mail($id_periodo) {
     return;
   }
 
-  $sql = 'SELECT * FROM coel_periodo_detalle WHERE coel_periodo_id = :coel_periodo_id';
+  $sql = 'SELECT * FROM coel_periodo_detalle WHERE coel_periodo_id = :coel_periodo_id and estado = 1';
   $fields = array(':coel_periodo_id' => $id_periodo);
   $result = db_query($sql,$fields);
   $uploads_dir = variable_get('file_public_path', conf_path() . '/files');
 
 
     while ($record = $result->fetchObject()){
-      $from = 'daxdoxsi@gmail.com';
-      $to = 'david.madrigal@bamboo.cr';
-      // $to = $record->correo_electronico;
+
+      // Si no existe una dirección de correo electrónico se omite el envío del mensaje
+      if ($record->correo_electronico == ''){
+          continue;
+      }
+
+      $from = variable_get('site_mail', 'testing@cms77.com');
+      $to = $record->correo_electronico;
       $subject = 'Comprobante de pago';
-      $body = 'Texto del correo';
+      $body = 'Estimado(a) '.$record->nombre.' '.$record->primer_apellido.' '.$record->segundo_apellido.':'.PHP_EOL.PHP_EOL;
+      $body .= 'Adjunto a este mensaje se encuentra su comprobante de pago.'.PHP_EOL.PHP_EOL;
+      $body .= 'Atentamente,'.PHP_EOL.PHP_EOL;
+      $body .= variable_get('site_name', '').PHP_EOL;
+      $body .= variable_get('site_slogan', '').PHP_EOL.PHP_EOL;
       if ($record->tipo_comprobante == 2) {
           $attachment = array(
               array('filepath' => $uploads_dir . '/comprobantes/' . $id_periodo . '/' . $record->coel_periodo_detalle_id . '/comprobante-pago.pdf'),
@@ -650,17 +662,15 @@ function coel_import_send_mail($id_periodo) {
           );
       }
 
-        $params = array(
-            'key' => 'my_email_template',
-            'to' => $to,
-            'from' => $from,
-            'subject' => $subject,
-            'body' => $body,
-            'attachment' => $attachment
-        );
+      $params = array(
+         'key' => 'my_email_template',
+         'to' => $to,
+         'from' => $from,
+         'subject' => $subject,
+         'body' => $body,
+         'attachment' => $attachment
+      );
       drupal_mail('coel_import','my_email_template',$to,'en',$params,$from);
-        echo '1 enviado';
-        exit;
   }
 
   return array('#markup' => "<h2>Todos los comprobantes fueron enviados por email</h2>");
