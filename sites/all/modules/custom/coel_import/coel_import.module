@@ -108,7 +108,7 @@ function coel_import_menu() {
     'page callback' => 'coel_import_files',
     'access callback' => TRUE,
     'expanded' => TRUE,
-    'file' => 'tcpdf.pages.inc'
+    //'file' => 'tcpdf.pages.inc'
   );
 
   $items['coel/send'] = array(
@@ -116,7 +116,7 @@ function coel_import_menu() {
     'page callback' => 'coel_import_send',
     'access callback' => TRUE,
     'expanded' => TRUE,
-    'file' => 'tcpdf.pages.inc'
+    //'file' => 'tcpdf.pages.inc'
     //'access arguments' => array('access coel send'),
   );
 
@@ -175,9 +175,7 @@ function coel_import_files() {
     $first_line = true;
 
     // Registrando periodo en la base de datos
-    $query = db_query('insert into coel_periodo SET nombre = :nombre',array(':nombre'=>$_POST['periodo']));
-
-
+    db_query('insert into coel_periodo SET nombre = :nombre',array(':nombre'=>$_POST['periodo']));
     $last_insert_id = Database::getConnection()->lastInsertId();
 
     // Creando sistema de archivos
@@ -193,34 +191,55 @@ function coel_import_files() {
     mkdir($path_periodo,0777,true);
 
 
-
+    // Leyendo la primer hoja del Excel
     foreach ($Reader as $row)
     {
+      // Omitir leer el encabezado del archivo
       if ($first_line) {
         $first_line = false;
         continue;
       }
 
-        //echo '<pre>'.print_r($row,true).'</pre>';
+        // Mapa de campos
+        $line = new \stdClass;
+        $line->primer_apellido = $row[1];
+        $line->segundo_apellido = $row[2];
+        $line->nombre = $row[3];
+        $line->cedula = $row[4];
+        $line->correo_electronico = $row[5];
+        $line->salario_base_quincenal = $row[6];
+        $line->dias_laborados = $row[7];
+        $line->total_salario = $row[8];
+        $line->ccss = $row[10];
+        $line->prestamo = $row[11];
+        $line->adelanto_salario = $row[12];
+        $line->embargos = $row[13];
+        $line->total_pagado = $row[14];
+
+
+        if ($line->total_pagado == ''){
+            continue;
+        }
 
 
 
-        // Mapeando campos
+
+        // Parametros base de datos
         $map = array(
             ':coel_periodo_id' => $last_insert_id,
-            ':primer_apellido' => $row[1],
-            ':segundo_apellido' => $row[2],
-            ':nombre' => $row[3],
-            ':cedula' => $row[4],
-            ':correo_electronico' => $row[5],
-            ':salario_base_quincenal' => $row[6],
-            ':dias_laborados' => $row[7],
-            ':total_salario' => $row[8],
-            ':ccss' => $row[10],
-            ':prestamo' => $row[11],
-            ':adelanto_salario' => $row[12],
-            ':embargos' => $row[13],
-            ':total_pagado' => $row[14],
+            ':primer_apellido' => $line->primer_apellido,
+            ':segundo_apellido' => $line->segundo_apellido,
+            ':nombre' => $line->nombre,
+            ':cedula' => $line->cedula,
+            ':correo_electronico' => $line->correo_electronico,
+            ':salario_base_quincenal' => $line->salario_base_quincenal,
+            ':dias_laborados' => $line->dias_laborados,
+            ':total_salario' => $line->total_salario,
+            ':ccss' => $line->ccss,
+            ':prestamo' => $line->prestamo,
+            ':adelanto_salario' => $line->adelanto_salario,
+            ':embargos' => $line->embargos,
+            ':total_pagado' => $line->total_pagado,
             ':tipo_comprobante' => 1,
             ':estado' => 1
         );  // $map
@@ -244,14 +263,15 @@ function coel_import_files() {
           tipo_comprobante = :tipo_comprobante,
           estado = :estado';
 
-        $query = db_query($sql,$map);
+        db_query($sql,$map);
         $id_empleado = Database::getConnection()->lastInsertId();
 
         // Generando PDF con el comprobante
         $path_empleado = $path_periodo.'/'.$id_empleado;
         mkdir($path_empleado);
 
-        file_put_contents($path_empleado.'/comprobante-a.pdf',coel_import_comprobante_a());
+        // escribiendo el PDF generado
+        file_put_contents($path_empleado.'/comprobante-pago.pdf',coel_import_comprobante_pdf(0, $line));
 
 
       //print_r($row);
@@ -267,28 +287,36 @@ function coel_import_files() {
               continue;
           }
 
-          //echo '<pre>Segunda: '.print_r($row,true).'</pre>';
+          // Mapa de campos
+          $line = new \stdClass;
+          $line->primer_apellido = $row[1];
+          $line->segundo_apellido = $row[2];
+          $line->nombre = $row[3];
+          $line->cedula = $row[4];
+          $line->correo_electronico = $row[5];
+          $line->salario_base_quincenal = $row[6];
+          $line->horas_extra = $row[7];
+          $line->feriados = $row[8];
+          $line->ccss_extraordinario = $row[10];
+          $line->total_pagado_extraordinario = $row[11];
 
-          // Mapeando campos
+          if ($line->total_pagado_extraordinario == ''){
+              continue;
+          }
+
+
           $map = array(
               ':coel_periodo_id' => $last_insert_id,
-              ':primer_apellido' => $row[1],
-              ':segundo_apellido' => $row[2],
-              ':nombre' => $row[3],
-              ':cedula' => $row[4],
-              ':correo_electronico' => $row[5],
-              ':salario_base_quincenal' => $row[6],
-              ':horas_extra' => $row[7],
-              ':feriados' => $row[8],
-              ':ccss_extraordinario' => $row[10],
-              ':total_pagado_extraordinario' => $row[11],
-              /*':dias_laborados' => $row[7],
-              ':total_salario' => $row[8],
-              ':ccss' => $row[10],
-              ':prestamo' => $row[11],
-              ':adelanto_salario' => $row[12],
-              ':embargos' => $row[13],
-              ':total_pagado' => $row[14],*/
+              ':primer_apellido' => $line->primer_apellido,
+              ':segundo_apellido' => $line->segundo_apellido,
+              ':nombre' => $line->nombre,
+              ':cedula' => $line->cedula,
+              ':correo_electronico' => $line->correo_electronico,
+              ':salario_base_quincenal' => $line->salario_base_quincenal,
+              ':horas_extra' => $line->horas_extra,
+              ':feriados' => $line->feriados,
+              ':ccss_extraordinario' => $line->ccss_extraordinario,
+              ':total_pagado_extraordinario' => $line->total_pagado_extraordinario,
               ':tipo_comprobante' => 2,
               ':estado' => 1
           );  // $map
@@ -301,16 +329,7 @@ function coel_import_files() {
           cedula = :cedula,
           correo_electronico = :correo_electronico,
           salario_base_quincenal = :salario_base_quincenal,
-          '.
-              /*dias_laborados = :dias_laborados,
-          total_salario = :total_salario,
-          ccss = :ccss,
-          prestamo = :prestamo,
-          adelanto_salario = :adelanto_salario,
-          embargos = :embargos,
-          total_pagado = :total_pagado,
-              */
-          'horas_extra = :horas_extra,
+          horas_extra = :horas_extra,
           feriados = :feriados,
           ccss_extraordinario = :ccss_extraordinario,
           total_pagado_extraordinario = :total_pagado_extraordinario,
@@ -323,19 +342,16 @@ function coel_import_files() {
 
           // Localizar ID de empleado para agregar el comprobante B
           $sql = 'SELECT * FROM coel_periodo_detalle WHERE cedula = :cedula and coel_periodo_id = :coel_periodo_id';
-          $fields = array(':cedula' => $row[4],':coel_periodo_id' => $last_insert_id);
+          $fields = array(':cedula' => $line->cedula,':coel_periodo_id' => $last_insert_id);
           $result = db_query($sql,$fields);
 
           $record = $result->fetchObject();
           $id_empleado = $record->coel_periodo_detalle_id;
           $path_empleado = $path_periodo.'/'.$id_empleado;
 
-          file_put_contents($path_empleado.'/comprobante-b.pdf',coel_import_comprobante_b());
-          // echo  '<pre>' . print_r($record,true) .'</pre>';
-          // exit;
+          // Escribiendo el PDF generado
+          file_put_contents($path_empleado.'/comprobante-pago-extras.pdf',coel_import_comprobante_pdf(1, $line));
 
-
-          //print_r($ow);
       }
 
     return array(
@@ -344,9 +360,148 @@ function coel_import_files() {
   }
 }
 
-function coel_import_comprobante_a() {
-    // Get the content we want to convert into pdf.
-    $html = theme('tcpdf_example_basic_html');
+function coel_import_comprobante_pdf($type, $data) {
+
+    switch ($type) {
+        case 0:
+            $html = '
+            <table width="100%" style="border:solid 1px #000000;" cellpadding="5" cellspacing="0">
+                <tr>
+                    <th colspan="6" style="background-color: #dddddd;"><h1>COMPROBANTE DE PAGO DE SALARIO</h1><p>Para consultas sobre el pago unicamente en oficinas de L-V 8am-4pm</p></th>
+                </tr>
+                <tr>
+                    <th>Nombre completo</th>
+                    <td colspan="3">'.$data->primer_apellido.' '.$data->segundo_apellido.' '.$data->nombre.'</td>
+                    <th>Fecha:</th>
+                    <td>'.date('d-m-Y').'</td>
+                </tr>
+                <tr>
+                    <th>Salario Base Mensual</th>
+                    <td>&nbsp;</td>
+                    <td>'.($data->salario_base_quincenal * 2).'</td>
+                    <th>&nbsp;</th>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                </tr>
+                <tr>
+                    <th>&nbsp;</th>
+                    <td colspan="3">&nbsp;</td>
+                    <th>&nbsp;</th>
+                    <td>&nbsp;</td>
+                </tr>
+                <tr>
+                    <th>Salario Base Quincenal</th>
+                    <td>-</td>
+                    <td>'.$data->salario_base_quincenal.'</td>
+                    <th>CCSS:</th>
+                    <td>-</td>
+                    <td>'.$data->ccss.'</td>
+                </tr>
+                <tr>
+                    <th>&nbsp;</th>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <th>Préstamo:</th>
+                    <td>-</td>
+                    <td>'.$data->prestamo.'</td>
+                </tr>
+                <tr>
+                    <th>Días laborados</th>
+                    <td>-</td>
+                    <td>'.$data->dias_laborados.'</td>
+                    <th>Adelanto de salario:</th>
+                    <td>-</td>
+                    <td>'.$data->adelanto_salario.'</td>
+                </tr>
+                <tr>
+                    <th>Total salario:</th>
+                    <td>-</td>
+                    <td>'.$data->total_salario.'</td>
+                    <th>Embargos:</th>
+                    <td>-</td>
+                    <td>'.$data->embargos.'</td>
+                </tr>
+                <tr>
+                    <td colspan="6">&nbsp;</td>
+                </tr>
+                <tr>
+                    <th>&nbsp;</th>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <th><h2>Total a pagar</h2></th>
+                    <td>-</td>
+                    <td>'.$data->total_pagado.'</td>
+                </tr>
+                <tr>
+                    <th colspan="6" align="center" style="background-color:#cccccc;">Recordar que unicamente planilla puede evacuar las dudas que tengan sobre el comprobante o pago</th>
+                </tr>
+
+
+
+            </table>
+            ';
+            break;
+        case 1:
+            $html = '
+            <table width="100%" style="border:solid 1px #000000;" cellpadding="5" cellspacing="0">
+                <tr>
+                    <th colspan="6" style="background-color: #dddddd;"><h1>COMPROBANTE DE PAGO DE HORAS EXTRAS</h1><p>Para consultas sobre el pago unicamente en oficinas de L-V 8am-4pm</p></th>
+                </tr>
+                <tr>
+                    <th>Nombre completo</th>
+                    <td colspan="3">'.$data->primer_apellido.' '.$data->segundo_apellido.' '.$data->nombre.'</td>
+                    <th>Fecha:</th>
+                    <td>'.date('d-m-Y').'</td>
+                </tr>
+                <tr>
+                    <th>Salario Base Mensual</th>
+                    <td>&nbsp;</td>
+                    <td>'.($data->salario_base_quincenal * 2).'</td>
+                    <th>&nbsp;</th>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                </tr>
+                <tr>
+                    <th>&nbsp;</th>
+                    <td colspan="3">&nbsp;</td>
+                    <th>&nbsp;</th>
+                    <td>&nbsp;</td>
+                </tr>
+                <tr>
+                    <th>Horas extras:</th>
+                    <td>-</td>
+                    <td>'.$data->horas_extra.'</td>
+                    <th>CCSS:</th>
+                    <td>-</td>
+                    <td>'.$data->ccss_extraordinario.'</td>
+                </tr>
+                <tr>
+                    <th>Feriado:</th>
+                    <td>-</td>
+                    <td>'.$data->feriados.'</td>
+                    <th>&nbsp;</th>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                </tr>
+                <tr>
+                    <th>&nbsp;</th>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <th><h2>Total a pagar</h2></th>
+                    <td>-</td>
+                    <td>'.$data->total_pagado_extraordinario.'</td>
+                </tr>
+                <tr>
+                    <th colspan="6" align="center" style="background-color:#cccccc;">Recordar que unicamente planilla puede evacuar las dudas que tengan sobre el comprobante o pago</th>
+                </tr>
+
+
+
+            </table>
+            ';
+
+            break;
+    }
 
     // Never make an instance of TCPDF or TCPDFDrupal classes manually.
     // Use tcpdf_get_instance() instead.
@@ -355,11 +510,19 @@ function coel_import_comprobante_a() {
     *  some TCPDF variables (like font types), and makes possible to change the
     *  default header or footer without creating a new class.
     */
+
+    $theme_settings = variable_get('theme_' . variable_get('theme_default', '') . '_settings', '');
+    if (isset($theme_settings['logo_path']) && (file_exists($theme_settings['logo_path']))) {
+        $tcpdf->Image(drupal_realpath($theme_settings['logo_path']), '', '', '', '', '', variable_get('site_url', ''), '', TRUE, 150, '', FALSE, FALSE, 0, FALSE, FALSE, FALSE);
+    }
+
     $tcpdf->DrupalInitialize(array(
         'footer' => array(
-            'html' => 'This is a test!! <em>Bottom of the page</em>',
+            'html' => 'Comprobante generado el '.date('d/m/Y H:i:s').'.',
         ),
         'header' => array(
+            'html' => 'Sistema de Comprobante Electrónico (COEL)'
+            /*
             'callback' => array(
                 'function' => 'coel_import_default_header',
                 // You can pass extra data to your callback.
@@ -367,40 +530,10 @@ function coel_import_comprobante_a() {
                     'welcome_message' => 'Hello, context array!',
                 ),
             ),
+            */
         ),
     ));
-    // Insert the content. Note that DrupalInitialize automaticly adds the first
-    // page to the pdf document.
-    $tcpdf->writeHTML($html);
 
-    return $tcpdf->Output('', 'S');
-}
-
-function coel_import_comprobante_b() {
-    // Get the content we want to convert into pdf.
-    $html = theme('tcpdf_example_basic_html');
-
-    // Never make an instance of TCPDF or TCPDFDrupal classes manually.
-    // Use tcpdf_get_instance() instead.
-    $tcpdf = tcpdf_get_instance();
-    /* DrupalInitialize() is an extra method added to TCPDFDrupal that initializes
-    *  some TCPDF variables (like font types), and makes possible to change the
-    *  default header or footer without creating a new class.
-    */
-    $tcpdf->DrupalInitialize(array(
-        'footer' => array(
-            'html' => 'This is a test!! <em>Bottom of the page</em>',
-        ),
-        'header' => array(
-            'callback' => array(
-                'function' => 'coel_import_default_header',
-                // You can pass extra data to your callback.
-                'context' => array(
-                    'welcome_message' => 'Hello, context array!',
-                ),
-            ),
-        ),
-    ));
     // Insert the content. Note that DrupalInitialize automaticly adds the first
     // page to the pdf document.
     $tcpdf->writeHTML($html);
@@ -507,13 +640,13 @@ function coel_import_send_mail($id_periodo) {
       $body = 'Texto del correo';
       if ($record->tipo_comprobante == 2) {
           $attachment = array(
-              array('filepath' => $uploads_dir . '/comprobantes/' . $id_periodo . '/' . $record->coel_periodo_detalle_id . '/comprobante-a.pdf'),
-              array('filepath' => $uploads_dir . '/comprobantes/' . $id_periodo . '/' . $record->coel_periodo_detalle_id . '/comprobante-b.pdf'),
+              array('filepath' => $uploads_dir . '/comprobantes/' . $id_periodo . '/' . $record->coel_periodo_detalle_id . '/comprobante-pago.pdf'),
+              array('filepath' => $uploads_dir . '/comprobantes/' . $id_periodo . '/' . $record->coel_periodo_detalle_id . '/comprobante-pago-extras.pdf'),
           );
       }
       else {
           $attachment = array(
-              array('filepath' => $uploads_dir . '/comprobantes/' . $id_periodo . '/' . $record->coel_periodo_detalle_id . '/comprobante-a.pdf'),
+              array('filepath' => $uploads_dir . '/comprobantes/' . $id_periodo . '/' . $record->coel_periodo_detalle_id . '/comprobante-pago.pdf'),
           );
       }
 
@@ -545,6 +678,4 @@ function coel_import_mail($key, &$message, $params) {
         $message['params']['attachments'] = $params['attachment'];
     }
 }
-/**
- * @} End of "defgroup page_example".
- */
+
