@@ -671,6 +671,10 @@ function coel_import_send_mail($id_periodo) {
          'attachment' => $attachment
       );
       drupal_mail('coel_import','my_email_template',$to,'en',$params,$from);
+        db_update('coel_periodo_detalle')
+            ->fields(array('estado'=> 2))
+            ->condition('coel_periodo_detalle_id',$record->coel_periodo_detalle_id,'=')
+            ->execute();
   }
 
   return array('#markup' => "<h2>Todos los comprobantes fueron enviados por email</h2>");
